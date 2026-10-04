@@ -56,10 +56,18 @@ function rankingData(mode){
  a.forEach(x=>{x.intervention=.6*percentileRank(lows,x.plow)+.4*percentileRank(vols,x.low);x.growth=percentileRank(mids,x.pmid);x.excellence=percentileRank(highs,x.phigh);x.cat=x.plow>=lowMed?(x.low>=volMed?"Kritikal":"Bersasar"):(x.low>=volMed?"Sokongan Berskala":"Pantau/Kekalkan")});
  let key=mode==="priority"?"intervention":mode==="growth"?"growth":"excellence";return a.sort((x,z)=>z[key]-x[key]);
 }
+function criticalSubjects(schoolName){
+ let c=$("cluster").value,y=$("year").value;
+ let rows=details.filter(x=>x.c===c&&x.name===schoolName&&(!y||x.year===y));
+ let mps=[...new Set(rows.map(x=>x.mp))];
+ let a=mps.map(mp=>{let r=rows.filter(x=>x.mp===mp),assessed=r.reduce((z,x)=>z+x.assessed,0),low=r.reduce((z,x)=>z+x.assessed*x.plow/100,0);return{mp,plow:assessed?100*low/assessed:0,low}}).sort((a,b)=>b.plow-a.plow);
+ return a.slice(0,3);
+}
 function table(arr,mode){
  let score=mode==="priority"?"intervention":mode==="growth"?"growth":"excellence";
  let title=mode==="priority"?"Skor Keutamaan":mode==="growth"?"Skor Lonjakan":"Skor Kecemerlangan";
- return `<div class="scroll"><table><thead><tr><th>#</th><th>Sekolah</th><th>TP1–TP2</th><th>TP3–TP4</th><th>TP5–TP6</th><th>${title}</th><th>Kategori</th></tr></thead><tbody>${arr.length?arr.map((x,i)=>`<tr><td class="rank">${i+1}</td><td><b>${x.name}</b></td><td>${pct(x.plow)}</td><td>${pct(x.pmid)}</td><td>${pct(x.phigh)}</td><td><b>${x[score].toFixed(1)}</b>/100</td><td><span class="badge ${catClass(x.cat)}">${x.cat}</span></td></tr>`).join(""):`<tr><td colspan="7">Tiada data untuk pilihan semasa.</td></tr>`}</tbody></table></div>`}
+ let extra=mode==="priority"&& !$("subject").value;
+ return `<div class="scroll"><table><thead><tr><th>#</th><th>Sekolah</th><th>TP1–TP2</th><th>TP3–TP4</th><th>TP5–TP6</th><th>${title}</th><th>Kategori</th>${extra?"<th>MP Paling Kritikal</th>":""}</tr></thead><tbody>${arr.length?arr.map((x,i)=>{let mp=extra?criticalSubjects(x.name).map(z=>`${z.mp} (${pct(z.plow)})`).join("<br>"):"";return `<tr><td class="rank">${i+1}</td><td><b>${x.name}</b></td><td>${pct(x.plow)}</td><td>${pct(x.pmid)}</td><td>${pct(x.phigh)}</td><td><b>${x[score].toFixed(1)}</b>/100</td><td><span class="badge ${catClass(x.cat)}">${x.cat}</span></td>${extra?`<td>${mp||"—"}</td>`:""}</tr>`}).join(""):`<tr><td colspan="${extra?8:7}">Tiada data untuk pilihan semasa.</td></tr>`}</tbody></table></div>`}
 function contextTitle(prefix){let y=$("year").value||"Semua Tahun/Tingkatan",m=$("subject").value||"Semua Mata Pelajaran";return `${prefix}: ${m} • ${y}`}
 function render(){
  let c=$("cluster").value, dd=filteredDetails();
@@ -67,7 +75,7 @@ function render(){
  let pl=assessed?100*low/assessed:0, pm=assessed?100*mid/assessed:0, ph=assessed?100*high/assessed:0;
  $("overview").innerHTML=cards([["Rekod ditaksir",assessed.toLocaleString(),"Bukan murid unik"],["TP1–TP2",pct(pl),"Keperluan sokongan"],["TP3–TP4",pct(pm),"Penguasaan berkembang"],["TP5–TP6",pct(ph),"Penguasaan tinggi"],["Tidak Ditaksir (TD)",td.toLocaleString(),"Dianalisis berasingan"]])+`<div class="grid" style="margin-top:12px"><div class="card"><h2>Profil tiga zon penguasaan</h2>${zoneBars(pl,pm,ph)}</div><div class="card"><h2>Apa yang data beritahu kita?</h2><div class="insight"><b>Intervensi:</b> ${pct(pl)} rekod ditaksir berada pada TP1–TP2.</div><div class="insight"><b>Lonjakan:</b> ${pct(pm)} berada pada TP3–TP4 — kumpulan ini menjadi ruang utama untuk peningkatan ke TP5–TP6.</div><div class="insight"><b>Kecemerlangan:</b> ${pct(ph)} berada pada TP5–TP6. Teliti sekolah dan mata pelajaran penyumbang sebagai potensi amalan baik.</div></div></div>`;
  let pri=rankingData("priority");
- $("priority").innerHTML=`<div class="card"><h2>${contextTitle("Keutamaan Intervensi")}</h2><div class="note"><b>Ranking ini mengikut pilihan Tahun/Tingkatan dan Mata Pelajaran semasa.</b> Pilihan sekolah tidak digunakan dalam tab ini kerana tujuan analisis ialah membandingkan semua sekolah dalam kluster. Skor 0–100 dikira semula secara relatif: 60% kedudukan % TP1–TP2 + 40% kedudukan volum rekod TP1–TP2.</div><br>${table(pri,"priority")}</div>`;
+ $("priority").innerHTML=`<div class="card"><h2>${contextTitle("Keutamaan Intervensi")}</h2><div class="note"><b>Ranking ini mengikut pilihan Tahun/Tingkatan dan Mata Pelajaran semasa.</b> Pilihan sekolah tidak digunakan dalam tab ini kerana tujuan analisis ialah membandingkan semua sekolah dalam kluster. Skor 0–100 dikira semula secara relatif: 60% kedudukan % TP1–TP2 + 40% kedudukan volum rekod TP1–TP2.${!$("subject").value?" <b>Kolum MP Paling Kritikal</b> menunjukkan sehingga 3 mata pelajaran dengan % TP1–TP2 tertinggi bagi setiap sekolah dalam Tahun/Tingkatan yang dipilih.":""}</div><br>${table(pri,"priority")}</div>`;
  let gro=rankingData("growth");
  $("growth").innerHTML=`<div class="card"><h2>${contextTitle("Potensi Lonjakan TP3–TP4")}</h2><div class="note">Ranking dikira semula mengikut pilihan semasa. Sekolah di bahagian atas mempunyai kepekatan TP3–TP4 lebih tinggi dan berpotensi diberi strategi untuk bergerak ke TP5–TP6.</div><br>${table(gro,"growth")}</div>`;
  let exc=rankingData("excellent");
