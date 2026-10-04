@@ -33,37 +33,57 @@ function fillSelect(el,vals,all){el.innerHTML=`<option value="">${all}</option>`
 fillSelect($("cluster"),clusters,"Pilih kluster"); $("cluster").value=clusters[0];
 function sync(){
  let c=$("cluster").value, ss=schools.filter(x=>x.c===c).sort((a,b)=>a.name.localeCompare(b.name));
- let keep=$("school").value; fillSelect($("school"),ss.map(x=>x.name),"Semua sekolah"); if(ss.some(x=>x.name===keep))$("school").value=keep;
- let dd=details.filter(x=>x.c===c && (!$("school").value||x.name===$("school").value));
- fillSelect($("year"),[...new Set(dd.map(x=>x.year))].sort(),"Semua Tahun/Tingkatan");
- fillSelect($("subject"),[...new Set(dd.map(x=>x.mp))].sort(),"Semua mata pelajaran"); render();
+ let keepS=$("school").value, keepY=$("year").value, keepM=$("subject").value;
+ fillSelect($("school"),ss.map(x=>x.name),"Semua sekolah"); if(ss.some(x=>x.name===keepS))$("school").value=keepS;
+ let base=details.filter(x=>x.c===c);
+ fillSelect($("year"),[...new Set(base.map(x=>x.year))].sort(),"Semua Tahun/Tingkatan"); if(base.some(x=>x.year===keepY))$("year").value=keepY;
+ let byYear=base.filter(x=>!$("year").value||x.year===$("year").value);
+ fillSelect($("subject"),[...new Set(byYear.map(x=>x.mp))].sort(),"Semua mata pelajaran"); if(byYear.some(x=>x.mp===keepM))$("subject").value=keepM;
+ render();
 }
 function filteredDetails(){let c=$("cluster").value,s=$("school").value,y=$("year").value,m=$("subject").value;return details.filter(x=>x.c===c&&(!s||x.name===s)&&(!y||x.year===y)&&(!m||x.mp===m))}
 function cards(vals){return `<div class="cards">${vals.map(x=>`<div class="card kpi"><small>${x[0]}</small><b>${x[1]}</b><span class="muted">${x[2]||""}</span></div>`).join("")}</div>`}
 function zoneBars(l,m,h){return `<div><b>TP1–TP2</b> ${pct(l)}<div class="bar"><i class="low" style="width:${l}%"></i></div><b>TP3–TP4</b> ${pct(m)}<div class="bar"><i class="mid" style="width:${m}%"></i></div><b>TP5–TP6</b> ${pct(h)}<div class="bar"><i class="high" style="width:${h}%"></i></div></div>`}
+function percentileRank(vals,v){if(vals.length<=1)return 100;let less=vals.filter(x=>x<v).length,equal=vals.filter(x=>x===v).length;return 100*(less+0.5*equal)/vals.length}
+function median(a){if(!a.length)return 0;let b=[...a].sort((x,y)=>x-y),n=b.length;return n%2?b[(n-1)/2]:(b[n/2-1]+b[n/2])/2}
+function rankingData(mode){
+ let c=$("cluster").value,y=$("year").value,m=$("subject").value;
+ let rows=details.filter(x=>x.c===c&&(!y||x.year===y)&&(!m||x.mp===m));
+ let names=[...new Set(rows.map(x=>x.name))];
+ let a=names.map(name=>{let r=rows.filter(x=>x.name===name), assessed=r.reduce((z,x)=>z+x.assessed,0),td=r.reduce((z,x)=>z+x.td,0);let low=r.reduce((z,x)=>z+x.assessed*x.plow/100,0),mid=r.reduce((z,x)=>z+x.assessed*x.pmid/100,0),high=r.reduce((z,x)=>z+x.assessed*x.phigh/100,0);return{name,assessed,td,low,mid,high,plow:assessed?100*low/assessed:0,pmid:assessed?100*mid/assessed:0,phigh:assessed?100*high/assessed:0}});
+ let lowMed=median(a.map(x=>x.plow)),volMed=median(a.map(x=>x.low));
+ let lows=a.map(x=>x.plow),vols=a.map(x=>x.low),mids=a.map(x=>x.pmid),highs=a.map(x=>x.phigh);
+ a.forEach(x=>{x.intervention=.6*percentileRank(lows,x.plow)+.4*percentileRank(vols,x.low);x.growth=percentileRank(mids,x.pmid);x.excellence=percentileRank(highs,x.phigh);x.cat=x.plow>=lowMed?(x.low>=volMed?"Kritikal":"Bersasar"):(x.low>=volMed?"Sokongan Berskala":"Pantau/Kekalkan")});
+ let key=mode==="priority"?"intervention":mode==="growth"?"growth":"excellence";return a.sort((x,z)=>z[key]-x[key]);
+}
 function table(arr,mode){
  let score=mode==="priority"?"intervention":mode==="growth"?"growth":"excellence";
  let title=mode==="priority"?"Skor Keutamaan":mode==="growth"?"Skor Lonjakan":"Skor Kecemerlangan";
- return `<div class="scroll"><table><thead><tr><th>#</th><th>Sekolah</th><th>TP1–TP2</th><th>TP3–TP4</th><th>TP5–TP6</th><th>${title}</th><th>Kategori</th></tr></thead><tbody>${arr.map((x,i)=>`<tr><td class="rank">${i+1}</td><td><b>${x.name}</b></td><td>${pct(x.plow)}</td><td>${pct(x.pmid)}</td><td>${pct(x.phigh)}</td><td><b>${x[score].toFixed(1)}</b>/100</td><td><span class="badge ${catClass(x.cat)}">${x.cat}</span></td></tr>`).join("")}</tbody></table></div>`}
+ return `<div class="scroll"><table><thead><tr><th>#</th><th>Sekolah</th><th>TP1–TP2</th><th>TP3–TP4</th><th>TP5–TP6</th><th>${title}</th><th>Kategori</th></tr></thead><tbody>${arr.length?arr.map((x,i)=>`<tr><td class="rank">${i+1}</td><td><b>${x.name}</b></td><td>${pct(x.plow)}</td><td>${pct(x.pmid)}</td><td>${pct(x.phigh)}</td><td><b>${x[score].toFixed(1)}</b>/100</td><td><span class="badge ${catClass(x.cat)}">${x.cat}</span></td></tr>`).join(""):`<tr><td colspan="7">Tiada data untuk pilihan semasa.</td></tr>`}</tbody></table></div>`}
+function contextTitle(prefix){let y=$("year").value||"Semua Tahun/Tingkatan",m=$("subject").value||"Semua Mata Pelajaran";return `${prefix}: ${m} • ${y}`}
 function render(){
- let c=$("cluster").value, ss=schools.filter(x=>x.c===c), dd=filteredDetails();
+ let c=$("cluster").value, dd=filteredDetails();
  let assessed=dd.reduce((z,x)=>z+x.assessed,0), low=dd.reduce((z,x)=>z+x.assessed*x.plow/100,0), mid=dd.reduce((z,x)=>z+x.assessed*x.pmid/100,0), high=dd.reduce((z,x)=>z+x.assessed*x.phigh/100,0), td=dd.reduce((z,x)=>z+x.td,0);
  let pl=assessed?100*low/assessed:0, pm=assessed?100*mid/assessed:0, ph=assessed?100*high/assessed:0;
  $("overview").innerHTML=cards([["Rekod ditaksir",assessed.toLocaleString(),"Bukan murid unik"],["TP1–TP2",pct(pl),"Keperluan sokongan"],["TP3–TP4",pct(pm),"Penguasaan berkembang"],["TP5–TP6",pct(ph),"Penguasaan tinggi"],["Tidak Ditaksir (TD)",td.toLocaleString(),"Dianalisis berasingan"]])+`<div class="grid" style="margin-top:12px"><div class="card"><h2>Profil tiga zon penguasaan</h2>${zoneBars(pl,pm,ph)}</div><div class="card"><h2>Apa yang data beritahu kita?</h2><div class="insight"><b>Intervensi:</b> ${pct(pl)} rekod ditaksir berada pada TP1–TP2.</div><div class="insight"><b>Lonjakan:</b> ${pct(pm)} berada pada TP3–TP4 — kumpulan ini menjadi ruang utama untuk peningkatan ke TP5–TP6.</div><div class="insight"><b>Kecemerlangan:</b> ${pct(ph)} berada pada TP5–TP6. Teliti sekolah dan mata pelajaran penyumbang sebagai potensi amalan baik.</div></div></div>`;
- let pri=[...ss].sort((a,b)=>b.intervention-a.intervention);
- $("priority").innerHTML=`<div class="card"><h2>Sekolah Mana Perlu Dibimbing Dahulu?</h2><div class="note">Skor 0–100 ialah skor relatif dalam kluster: 60% kedudukan persentil % TP1–TP2 + 40% kedudukan persentil bilangan rekod TP1–TP2. Ia menyusun keutamaan penelitian, bukan markah prestasi sekolah.</div><br>${table(pri,"priority")}</div>`;
- let gro=[...ss].sort((a,b)=>b.growth-a.growth);
- $("growth").innerHTML=`<div class="card"><h2>Potensi Lonjakan TP3–TP4</h2><div class="note">Sekolah di bahagian atas mempunyai concentration TP3–TP4 yang tinggi berbanding sekolah dalam kluster sama. Fokus: strategi menggerakkan penguasaan berkembang ke TP5–TP6.</div><br>${table(gro,"growth")}</div>`;
- let exc=[...ss].sort((a,b)=>b.excellence-a.excellence);
- $("excellent").innerHTML=`<div class="card"><h2>Kecemerlangan TP5–TP6 & Potensi Amalan Baik</h2><div class="note">Kedudukan tinggi ialah isyarat untuk diteliti sebagai potensi sumber amalan baik/PLC. Ia bukan pengesahan automatik kualiti PBD tanpa semakan konteks dan moderasi.</div><br>${table(exc,"excellent")}</div>`;
+ let pri=rankingData("priority");
+ $("priority").innerHTML=`<div class="card"><h2>${contextTitle("Keutamaan Intervensi")}</h2><div class="note"><b>Ranking ini mengikut pilihan Tahun/Tingkatan dan Mata Pelajaran semasa.</b> Pilihan sekolah tidak digunakan dalam tab ini kerana tujuan analisis ialah membandingkan semua sekolah dalam kluster. Skor 0–100 dikira semula secara relatif: 60% kedudukan % TP1–TP2 + 40% kedudukan volum rekod TP1–TP2.</div><br>${table(pri,"priority")}</div>`;
+ let gro=rankingData("growth");
+ $("growth").innerHTML=`<div class="card"><h2>${contextTitle("Potensi Lonjakan TP3–TP4")}</h2><div class="note">Ranking dikira semula mengikut pilihan semasa. Sekolah di bahagian atas mempunyai kepekatan TP3–TP4 lebih tinggi dan berpotensi diberi strategi untuk bergerak ke TP5–TP6.</div><br>${table(gro,"growth")}</div>`;
+ let exc=rankingData("excellent");
+ $("excellent").innerHTML=`<div class="card"><h2>${contextTitle("Kecemerlangan TP5–TP6")}</h2><div class="note">Ranking dikira semula mengikut pilihan semasa. Kedudukan tinggi ialah isyarat potensi amalan baik/PLC, bukan pengesahan automatik kualiti PBD tanpa moderasi.</div><br>${table(exc,"excellent")}</div>`;
  let chosen=$("school").value; if(!chosen) chosen=pri[0]?.name||"";
  let x=schools.find(z=>z.c===c&&z.name===chosen);
- let sd=details.filter(z=>z.c===c&&z.name===chosen).sort((a,b)=>b.plow-a.plow);
+ let sd=details.filter(z=>z.c===c&&z.name===chosen&&(!$("year").value||z.year===$("year").value)&&(!$("subject").value||z.mp===$("subject").value)).sort((a,b)=>b.plow-a.plow);
  let highd=[...sd].sort((a,b)=>b.phigh-a.phigh);
- $("profile").innerHTML=x?`<div class="card"><h2>${x.name}</h2>${cards([["TP1–TP2",pct(x.plow),x.cat],["TP3–TP4",pct(x.pmid),"Potensi lonjakan"],["TP5–TP6",pct(x.phigh),"Penguasaan tinggi"],["TD",x.td.toLocaleString(),"Semak jika ketara"]])}<div class="grid" style="margin-top:12px"><div class="card"><h2>Fokus intervensi teratas</h2>${sd.slice(0,8).map(z=>`<div class="insight"><b>${z.year} • ${z.mp}</b><br>TP1–TP2: ${pct(z.plow)} | TP3–TP4: ${pct(z.pmid)} | TP5–TP6: ${pct(z.phigh)}</div>`).join("")}</div><div class="card"><h2>Kekuatan / potensi amalan baik</h2>${highd.slice(0,8).map(z=>`<div class="insight"><b>${z.year} • ${z.mp}</b><br>TP5–TP6: ${pct(z.phigh)} | TP3–TP4: ${pct(z.pmid)}</div>`).join("")}</div></div>`:"";
- $("method").innerHTML=`<div class="card"><h2>Metodologi Analisis</h2><p><b>1.</b> Empat kluster dianalisis berasingan: SM, SK, SJKC dan SJKT.</p><p><b>2.</b> Semua kadar menggunakan pengiraan berwajaran berdasarkan rekod ditaksir TP1–TP6. TD tidak dimasukkan dalam denominator penguasaan.</p><p><b>3.</b> Matriks intervensi menggunakan median sekolah dalam kluster bagi % TP1–TP2 dan bilangan TP1–TP2.</p><p><b>4.</b> TP3–TP4 dianalisis sebagai zon penguasaan berkembang/potensi lonjakan; TP5–TP6 sebagai penguasaan tinggi dan isyarat potensi amalan baik.</p><p><b>5.</b> Skor 0–100 ialah kedudukan relatif dalam kluster, bukan gred prestasi.</p><p><b>6.</b> Dataset tiada ID murid; agregat merentas mata pelajaran disebut rekod pentaksiran, bukan murid unik.</p><h3>Median kluster</h3>${clusters.map(k=>`<span class="pill">${k}: TP1–TP2 ${pct(thresholds[k].lowpct)} • TP3–TP4 ${pct(thresholds[k].midpct)} • TP5–TP6 ${pct(thresholds[k].highpct)}</span>`).join("")}</div>`;
+ let pa=sd.reduce((z,q)=>z+q.assessed,0),plo=sd.reduce((z,q)=>z+q.assessed*q.plow/100,0),pmi=sd.reduce((z,q)=>z+q.assessed*q.pmid/100,0),phi=sd.reduce((z,q)=>z+q.assessed*q.phigh/100,0),ptd=sd.reduce((z,q)=>z+q.td,0);
+ $("profile").innerHTML=x?`<div class="card"><h2>${x.name}</h2><div class="note">Profil di bawah mengikut penapis Tahun/Tingkatan dan Mata Pelajaran semasa.</div><br>${cards([["TP1–TP2",pct(pa?100*plo/pa:0),"Keperluan sokongan"],["TP3–TP4",pct(pa?100*pmi/pa:0),"Potensi lonjakan"],["TP5–TP6",pct(pa?100*phi/pa:0),"Penguasaan tinggi"],["TD",ptd.toLocaleString(),"Semak jika ketara"]])}<div class="grid" style="margin-top:12px"><div class="card"><h2>Fokus intervensi teratas</h2>${sd.slice(0,8).map(z=>`<div class="insight"><b>${z.year} • ${z.mp}</b><br>TP1–TP2: ${pct(z.plow)} | TP3–TP4: ${pct(z.pmid)} | TP5–TP6: ${pct(z.phigh)}</div>`).join("")||"Tiada data untuk pilihan semasa."}</div><div class="card"><h2>Kekuatan / potensi amalan baik</h2>${highd.slice(0,8).map(z=>`<div class="insight"><b>${z.year} • ${z.mp}</b><br>TP5–TP6: ${pct(z.phigh)} | TP3–TP4: ${pct(z.pmid)}</div>`).join("")||"Tiada data untuk pilihan semasa."}</div></div></div>`:"";
+ $("method").innerHTML=`<div class="card"><h2>Metodologi Analisis</h2><p><b>1.</b> Empat kluster dianalisis berasingan: SM, SK, SJKC dan SJKT.</p><p><b>2.</b> Semua kadar menggunakan pengiraan berwajaran berdasarkan rekod ditaksir TP1–TP6. TD tidak dimasukkan dalam denominator penguasaan.</p><p><b>3.</b> Keutamaan Intervensi dikira semula secara dinamik mengikut Kluster + Tahun/Tingkatan + Mata Pelajaran. Pilihan sekolah tidak mengehadkan ranking perbandingan.</p><p><b>4.</b> TP3–TP4 dianalisis sebagai zon penguasaan berkembang/potensi lonjakan; TP5–TP6 sebagai penguasaan tinggi dan isyarat potensi amalan baik.</p><p><b>5.</b> Skor 0–100 ialah kedudukan relatif dalam pilihan semasa, bukan gred prestasi.</p><p><b>6.</b> Dataset tiada ID murid; agregat merentas mata pelajaran disebut rekod pentaksiran, bukan murid unik.</p></div>`;
 }
-$("cluster").onchange=sync;$("school").onchange=()=>{let c=$("cluster").value,s=$("school").value;let dd=details.filter(x=>x.c===c&&(!s||x.name===s));fillSelect($("year"),[...new Set(dd.map(x=>x.year))].sort(),"Semua Tahun/Tingkatan");fillSelect($("subject"),[...new Set(dd.map(x=>x.mp))].sort(),"Semua mata pelajaran");render()};$("year").onchange=render;$("subject").onchange=render;
-document.querySelectorAll("button[data-tab]").forEach(b=>b.onclick=()=>{document.querySelectorAll("button[data-tab]").forEach(q=>q.classList.remove("on"));b.classList.add("on");document.querySelectorAll("section").forEach(q=>q.classList.add("hidden"));$(b.dataset.tab).classList.remove("hidden")});
+$("cluster").onchange=sync;
+$("school").onchange=render;
+$("year").onchange=()=>{let c=$("cluster").value,y=$("year").value,keep=$("subject").value;let dd=details.filter(x=>x.c===c&&(!y||x.year===y));fillSelect($("subject"),[...new Set(dd.map(x=>x.mp))].sort(),"Semua mata pelajaran");if(dd.some(x=>x.mp===keep))$("subject").value=keep;render()};
+$("subject").onchange=render;
+document.querySelectorAll("button[data-tab]").forEach(b=>b.onclick=()=>{document.querySelectorAll("button[data-tab]").forEach(q=>q.classList.remove("on"));b.classList.add("on");document.querySelectorAll("section").forEach(q=>q.classList.add("hidden"));$(b.dataset.tab).classList.remove("hidden");let rank=["priority","growth","excellent"].includes(b.dataset.tab);$("school").disabled=rank;$("school").title=rank?"Ranking membandingkan semua sekolah dalam kluster":"";render()});
 sync();
 </script></body></html>
